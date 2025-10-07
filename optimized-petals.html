@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ultra-Optimized Subtle Petals</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      width: 100vw;
+      height: 100vh;
+      background: #fafafa;
+      overflow: hidden;
+    }
+    
+    #canvas {
+      width: 100%;
+      height: 100%;
+      cursor: move;
+    }
+    
+    /* パフォーマンス表示 */
+    #performance {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      background: rgba(0, 0, 0, 0.7);
+      color: white;
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 12px;
+      z-index: 1000;
+      opacity: 0.8;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div id="performance">
+    FPS: <span id="fps">--</span><br>
+    Petals: <span id="petalCount">--</span><br>
+    Visible: <span id="visibleCount">--</span>
+  </div>
+  
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    // パフォーマンス設定
+    let scale = 1;
+    
+    // Canvas設定（解像度を下げて軽くする）
+    function setupCanvas() {
+      const dpr = Math.min(window.devicePixelRatio, 2); // 最大2倍まで
+      scale = dpr;
+      canvas.width = window.innerWidth * dpr;
+      canvas.height = window.innerHeight * dpr;
+      canvas.style.width = window.innerWidth + 'px';
+      canvas.style.height = window.innerHeight + 'px';
+      ctx.scale(dpr, dpr);
+      
+      // アンチエイリアスを調整
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'low';
+    }
+    setupCanvas();
+    
+    // 落ち着いたマットなパステルカラー
+    const matteColors = [
+      'rgba(203, 195, 227, 0.85)',  // 薄紫
+      'rgba(255, 218, 193, 0.85)',  // ピーチ
+      'rgba(182, 215, 168, 0.85)',  // セージグリーン
+      'rgba(159, 197, 232, 0.85)',  // スカイブルー
+      'rgba(253, 253, 150, 0.85)',  // レモン
+      'rgba(162, 210, 203, 0.85)',  // ミント
+      'rgba(255, 205, 210, 0.85)',  // サーモンピンク
+      'rgba(221, 189, 252, 0.85)',  // ライラック
+      'rgba(167, 199, 231, 0.85)',  // ペールブルー
+      'rgba(249, 231, 159, 0.85)',  // バニラ
+      'rgba(195, 232, 208, 0.85)',  // ペールグリーン
+      'rgba(252, 213, 206, 0.85)',  // アプリコット
+    ];
+    
+    // 花びらクラス（最適化版）
+    class Petal {
+      constructor(x, y) {
+        this.baseX = x;
+        this.baseY = y;
+        this.x = x;
+        this.y = y;
+        this.size = Math.random() * 25 + 35; // サイズを35-60pxに拡大
+        this.rotation = Math.random() * Math.PI * 2;
+        this.color = matteColors[Math.floor(Math.random() * matteColors.length)];
+        
+        // アニメーション用
+        this.offsetX = 0;
+        this.offsetY = 0;
+        this.floatPhase = Math.random() * Math.PI * 2;
+        
+        // 事前に計算できる値はキャッシュ
+        this.halfSize = this.size * 0.5;
+        this.size04 = this.size * 0.4;
+        this.size045 = this.size * 0.45;
+      }
+      
+      updatePosition(mouseX, mouseY, time) {
+        // マウスとの距離計算（必要な時のみ）
+        const dx = mouseX - this.baseX;
+        const dy = mouseY - this.baseY;
+        const distSq = dx * dx + dy * dy; // 平方根を避ける
+        
+        // 距離が閾値以内の場合のみ計算（レスポンシブ性を向上）
+        if (distSq < 12000) { // 影響範囲を110pxに拡大
+          const dist = Math.sqrt(distSq);
+          const force = (110 - dist) / 110 * 40; // より強い反応
+          this.offsetX = -(dx / dist) * force;
+          this.offsetY = -(dy / dist) * force;
+        } else {
+          // 元に戻る（より速いイージング）
+          this.offsetX *= 0.88;
+          this.offsetY *= 0.88;
+        }
+        
+        // 最終位置（浮遊感は最小限に）
+        this.x = this.baseX + this.offsetX + Math.sin(time * 0.0003 + this.floatPhase) * 0.3;
+        this.y = this.baseY + this.offsetY;
+      }
+      
+      draw() {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.rotation);
+        
+        // 影は最小限に（パフォーマンス重視）
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.03)';
+        ctx.shadowBlur = 3;
+        ctx.shadowOffsetX = 0.5;
+        ctx.shadowOffsetY = 1;
+        
+        // より簡単な花びら形状（描画コストを下げる）
+        ctx.beginPath();
+        ctx.ellipse(0, 0, this.size04, this.halfSize, 0, 0, Math.PI * 2);
+        
+        // 塗りつぶし
+        ctx.fillStyle = this.color;
+        ctx.fill();
+        
+        ctx.restore();
+      }
+    }
+    
+    // 花びら配列
+    let petals = [];
+    let mouseX = -1000;
+    let mouseY = -1000;
+    let animationId = null;
+    let lastTime = 0;
+    
+    // パフォーマンス測定
+    let fpsCount = 0;
+    let lastFpsTime = 0;
+    let currentFps = 0;
+    
+    // 花びらを配置（細かく調整して余白を埋める）
+    function createPetalField() {
+      petals = [];
+      const spacing = 47; // より細かく間隔調整
+      const rows = Math.ceil(window.innerHeight / spacing) + 1;
+      const cols = Math.ceil(window.innerWidth / spacing) + 1;
+      
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
+          // 奇数行をずらしてハニカム配置風に
+          const offsetCol = row % 2 === 0 ? 0 : spacing * 0.5;
+          const x = col * spacing + offsetCol + (Math.random() - 0.5) * spacing * 0.5;
+          const y = row * spacing + (Math.random() - 0.5) * spacing * 0.5;
+          petals.push(new Petal(x, y));
+          
+          // より慎重に2枚目を配置（30%の確率、離れた位置に）
+          if (Math.random() < 0.3) {
+            const angle = Math.random() * Math.PI * 2;
+            const distance = 15 + Math.random() * 15; // 15-30px離す
+            const offsetX = x + Math.cos(angle) * distance;
+            const offsetY = y + Math.sin(angle) * distance;
+            petals.push(new Petal(offsetX, offsetY));
+          }
+          
+          // 3枚目は更に控えめに（5%）
+          if (Math.random() < 0.05) {
+            const angle = Math.random() * Math.PI * 2;
+            const distance = 20 + Math.random() * 20; // 20-40px離す
+            const offsetX = x + Math.cos(angle) * distance;
+            const offsetY = y + Math.sin(angle) * distance;
+            petals.push(new Petal(offsetX, offsetY));
+          }
+        }
+      }
+      
+      console.log(`Created ${petals.length} petals (optimized spacing)`);
+    }
+    
+    // 最適化された描画ループ（更に高速化）
+    function draw(currentTime) {
+      // フレームレート制限（60fps）
+      const deltaTime = currentTime - lastTime;
+      if (deltaTime < 16.67) { // 60fps = 16.67ms
+        animationId = requestAnimationFrame(draw);
+        return;
+      }
+      lastTime = currentTime;
+      
+      // 背景をクリア（最小限）
+      ctx.fillStyle = '#fafafa';
+      ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
+      
+      // バッチ処理で効率化
+      ctx.imageSmoothingEnabled = false; // アンチエイリアス無効でさらに高速化
+      
+      // ビューポート内の花びらのみ更新・描画（さらに最適化）
+      const padding = 80; // 少し余裕を持たせる
+      const visiblePetals = [];
+      const viewportWidth = window.innerWidth + padding;
+      const viewportHeight = window.innerHeight + padding;
+      
+      // 1パスで可視性チェックと位置更新（より効率的）
+      for (let i = 0; i < petals.length; i++) {
+        const petal = petals[i];
+        
+        // 効率的な可視性チェック
+        if (petal.baseX > -padding && petal.baseX < viewportWidth && 
+            petal.baseY > -padding && petal.baseY < viewportHeight) {
+          
+          petal.updatePosition(mouseX, mouseY, currentTime);
+          visiblePetals.push(petal);
+        }
+      }
+      
+      // 描画を一括処理
+      visiblePetals.forEach(petal => petal.draw());
+      
+      // パフォーマンス測定
+      fpsCount++;
+      if (currentTime - lastFpsTime >= 1000) {
+        currentFps = fpsCount;
+        fpsCount = 0;
+        lastFpsTime = currentTime;
+        
+        // UI更新
+        document.getElementById('fps').textContent = currentFps;
+        document.getElementById('petalCount').textContent = petals.length;
+        document.getElementById('visibleCount').textContent = visiblePetals.length;
+      }
+      
+      animationId = requestAnimationFrame(draw);
+    }
+    
+    // マウスイベント（より効率的なスロットリング）
+    let mouseThrottle = false;
+    canvas.addEventListener('mousemove', (e) => {
+      if (!mouseThrottle) {
+        mouseX = e.clientX;
+        mouseY = e.clientY;
+        mouseThrottle = true;
+        requestAnimationFrame(() => {
+          mouseThrottle = false;
+        });
+      }
+    });
+    
+    canvas.addEventListener('mouseleave', () => {
+      mouseX = -1000;
+      mouseY = -1000;
+    });
+    
+    
+    // リサイズ対応（デバウンス付き）
+    let resizeTimeout;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
+        setupCanvas();
+        createPetalField();
+      }, 250);
+    });
+    
+    // 初期化と開始
+    createPetalField();
+    animationId = requestAnimationFrame(draw);
+    
+    // クリーンアップ
+    window.addEventListener('beforeunload', () => {
+      if (animationId) {
+        cancelAnimationFrame(animationId);
+      }
+    });
+  </script>
+</body>
+</html>
